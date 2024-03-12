@@ -11,6 +11,9 @@ jobs:
         submodules: 'recursive'
     - uses: turtlesec-no/get-ninja@main
     - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+        sdk: 10.0.20348.0
     - name: generate-makefiles
       shell: bash
       run: |
