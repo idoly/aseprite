@@ -2,7 +2,7 @@ name: build
 on: [push, pull_request]
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-latest
     strategy:
       fail-fast: false
     steps:
@@ -11,10 +11,6 @@ jobs:
         submodules: 'recursive'
     - uses: turtlesec-no/get-ninja@main
     - uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
-        sdk: 10.0.22621.0
-        toolset: 14.29.30153
     - name: generate-makefiles
       shell: bash
       run: |
