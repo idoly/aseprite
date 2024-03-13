@@ -14,7 +14,7 @@ jobs:
     - name: generate-makefiles
       shell: bash
       run: |
-        curl -Lo https://github.com/aseprite/skia/releases/latest/download/Skia-Windows-Release-x64.zip
+        curl -LO https://github.com/aseprite/skia/releases/latest/download/Skia-Windows-Release-x64.zip
         7z x Skia-Windows-Release-x64.zip -o ./skia
         cmake -S . -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
