@@ -1,38 +1,34 @@
-# Aseprite Windows x64 Build
+# Aseprite Windows x64 构建
 
-[![Build Aseprite](https://github.com/idoly/aseprite/actions/workflows/build.yml/badge.svg)](https://github.com/idoly/aseprite/actions/workflows/build.yml)
+[![构建 Aseprite](https://github.com/idoly/aseprite/actions/workflows/build.yml/badge.svg)](https://github.com/idoly/aseprite/actions/workflows/build.yml)
 
-Unofficial GitHub Actions workflow that verifies the latest stable
-[Aseprite](https://github.com/aseprite/aseprite) release on Windows x64.
+这是一个非官方 GitHub Actions 工作流，用于在 Windows x64 环境中验证
+[Aseprite](https://github.com/aseprite/aseprite) 的最新稳定版本。
 
-## What It Does
+## 功能
 
-- Checks the latest stable release published by the official Aseprite repository.
-- Builds with the latest GitHub-hosted Windows runner, MSVC x64, Ninja, and the matching Skia package.
-- Verifies that `aseprite.exe` targets x64.
-- Verifies that the executable does not depend on OpenSSL runtime DLLs.
-- Records successful versions in the GitHub Actions cache to avoid duplicate scheduled builds.
+- 查询 Aseprite 官方仓库发布的最新稳定版本。
+- 使用 GitHub 最新 Windows Runner、MSVC x64、Ninja 和匹配版本的 Skia 进行构建。
+- 验证 `aseprite.exe` 的目标架构为 x64。
+- 验证程序不依赖 OpenSSL 运行时 DLL。
+- 使用 GitHub Actions 缓存记录已成功构建的版本，避免定时任务重复构建。
 
-The workflow checks for a new stable version every day at 03:17 UTC. It also
-runs after changes to `main`. A manual run always rebuilds the latest stable
-version.
+工作流每天 UTC 03:17 检查一次新版本，并在 `main` 分支发生变更时运行检查。
+手动运行工作流时，无论当前版本是否已经构建，都会强制重新构建最新稳定版本。
 
-## Run Manually
+## 手动运行
 
-1. Open the [Build Aseprite workflow](https://github.com/idoly/aseprite/actions/workflows/build.yml).
-2. Select **Run workflow**.
-3. Wait for the `Windows x64` job to finish.
+1. 打开 [Build Aseprite 工作流](https://github.com/idoly/aseprite/actions/workflows/build.yml)。
+2. 点击 **Run workflow**。
+3. 等待 `Windows x64` 任务完成。
 
-## Binary Distribution
+## 二进制分发
 
-This repository does not publish compiled executables through Releases or
-GitHub Actions artifacts. Aseprite permits compiling and modifying its source
-for personal use, but its EULA restricts redistribution of compiled binaries.
-See the official [Aseprite EULA](https://github.com/aseprite/aseprite/blob/main/EULA.txt)
-for the applicable terms.
+本仓库不会通过 Releases 或 GitHub Actions Artifacts 发布编译后的可执行文件。
+Aseprite 允许出于个人用途编译和修改源代码，但其 EULA 限制重新分发编译后的二进制文件。
+具体条款请参阅官方 [Aseprite EULA](https://github.com/aseprite/aseprite/blob/main/EULA.txt)。
 
-## Disclaimer
+## 免责声明
 
-This project is not affiliated with or endorsed by Igara Studio or the
-Aseprite project. Aseprite and its source code belong to their respective
-copyright holders.
+本项目与 Igara Studio 或 Aseprite 官方项目没有关联，也未获得其认可。
+Aseprite 及其源代码的相关权利归各自权利人所有。
