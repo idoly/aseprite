@@ -1,0 +1,126 @@
+name: Build Aseprite
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-x64
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check latest release
+    runs-on: windows-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      cache_hit: ${{ steps.release-cache.outputs.cache-hit }}
+      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release-cache.outputs.cache-hit != 'true' }}
+
+    steps:
+      - name: Resolve latest stable release
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Latest stable release: $tag"
+
+      - name: Check release status
+        id: release-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .release-cache
+          key: windows-x64-${{ steps.version.outputs.tag }}
+          lookup-only: true
+
+  build:
+    name: Windows x64
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source and submodules
+        uses: actions/checkout@v4
+        with:
+          repository: aseprite/aseprite
+          ref: ${{ needs.check.outputs.tag }}
+          submodules: recursive
+
+      - name: Set up MSVC x64
+        uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: x64
+
+      - name: Set up Ninja
+        uses: aseprite/get-ninja@main
+
+      - name: Download Skia
+        shell: bash
+        run: |
+          workspace=$(cygpath "${{ github.workspace }}")
+          skia_url=$(bash "$workspace/laf/misc/skia-url.sh" release windows x64 | xargs)
+          curl --fail --location --retry 3 --ssl-revoke-best-effort \
+            --output skia.zip "$skia_url"
+          unzip -q skia.zip -d skia
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLAF_BACKEND=skia \
+            -DENABLE_OPENSSL=OFF \
+            -DSKIA_DIR="$(realpath skia)" \
+            -DSKIA_LIBRARY_DIR="$(realpath skia/out/Release-x64)" \
+            -DSKIA_LIBRARY="$(realpath skia/out/Release-x64/skia.lib)"
+
+      - name: Build
+        run: cmake --build build --target aseprite --parallel
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          $headers = (& dumpbin /headers build/bin/aseprite.exe) -join "`n"
+          $imports = (& dumpbin /dependents build/bin/aseprite.exe) -join "`n"
+          if ($headers -notmatch "machine \(x64\)") {
+            throw "aseprite.exe is not an x64 executable"
+          }
+          if ($imports -match "(?i)lib(crypto|ssl).*\.dll") {
+            throw "aseprite.exe depends on an OpenSSL runtime DLL"
+          }
+          $imports
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aseprite-${{ needs.check.outputs.tag }}-windows-x64
+          path: build/bin/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record successful release
+        if: needs.check.outputs.cache_hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p .release-cache
+          echo "${{ needs.check.outputs.tag }}" > .release-cache/version
+
+      - name: Save release status
+        if: needs.check.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-cache
+          key: windows-x64-${{ needs.check.outputs.tag }}
