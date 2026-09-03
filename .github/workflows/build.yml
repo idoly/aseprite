@@ -8,7 +8,7 @@ on:
     - cron: "17 3 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-windows-x64
@@ -21,8 +21,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
-      release_tag: ${{ steps.version.outputs.release_tag }}
-      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release.outputs.exists != 'true' }}
+      cache_hit: ${{ steps.release-cache.outputs.cache-hit }}
+      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release-cache.outputs.cache-hit != 'true' }}
 
     steps:
       - name: Resolve latest stable version
@@ -34,23 +34,15 @@ jobs:
           version=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$version" >> "$GITHUB_OUTPUT"
           echo "Latest stable version: $version"
 
-      - name: Check private release
-        id: release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "$RELEASE_TAG already exists"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "$RELEASE_TAG will be built"
-          fi
+      - name: Check build status
+        id: release-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .build-cache
+          key: windows-x64-${{ steps.version.outputs.version }}
+          lookup-only: true
 
   build:
     name: Windows x64
@@ -111,35 +103,16 @@ jobs:
           }
           $imports
 
-      - name: Package
-        shell: pwsh
-        env:
-          VERSION: ${{ needs.check.outputs.version }}
-        run: |
-          Compress-Archive `
-            -Path build/bin/* `
-            -DestinationPath "Aseprite-$env:VERSION-Windows-x64.zip" `
-            -CompressionLevel Optimal
-
-      - name: Publish private release
+      - name: Record successful build
+        if: needs.check.outputs.cache_hit != 'true'
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.check.outputs.version }}
-          RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
         run: |
-          archive="Aseprite-$VERSION-Windows-x64.zip"
-          title="Aseprite $VERSION"
-          notes="Personal Windows x64 build of Aseprite $VERSION. Official source: https://github.com/aseprite/aseprite/releases/tag/$VERSION"
+          mkdir -p .build-cache
+          echo "${{ needs.check.outputs.version }}" > .build-cache/version
 
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$archive" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --title "$title" --notes "$notes" --latest --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" "$archive" \
-              --target "$GITHUB_SHA" \
-              --title "$title" \
-              --notes "$notes" \
-              --latest \
-              --repo "$GITHUB_REPOSITORY"
-          fi
+      - name: Save build status
+        if: needs.check.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build-cache
+          key: windows-x64-${{ needs.check.outputs.version }}
