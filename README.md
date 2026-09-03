@@ -6,7 +6,6 @@
 
 - 每天自动检查新版本，也可在 Actions 页面手动构建
 - 构建结果在对应运行页面的 **Artifacts** 中保留 7 天
-- 本仓库不创建 Releases
 
-编译产物仅供个人使用，请勿重新分发。详见官方
-[Aseprite EULA](https://github.com/aseprite/aseprite/blob/main/EULA.txt)。
+> [!IMPORTANT]
+> 编译产物仅供个人使用，请勿重新分发。详见 [Aseprite EULA](https://github.com/aseprite/aseprite/blob/main/EULA.txt)。
