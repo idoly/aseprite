@@ -103,6 +103,14 @@ jobs:
           }
           $imports
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Aseprite-${{ needs.check.outputs.version }}-Windows-x64
+          path: build/bin/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Record successful build
         if: needs.check.outputs.cache_hit != 'true'
         shell: bash
