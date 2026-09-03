@@ -8,7 +8,7 @@ on:
     - cron: "17 3 * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-windows-x64
@@ -20,29 +20,37 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 5
     outputs:
-      tag: ${{ steps.version.outputs.tag }}
-      cache_hit: ${{ steps.release-cache.outputs.cache-hit }}
-      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release-cache.outputs.cache-hit != 'true' }}
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release.outputs.exists != 'true' }}
 
     steps:
-      - name: Resolve latest stable release
+      - name: Resolve latest stable version
         id: version
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
-          test -n "$tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Latest stable release: $tag"
+          version=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=build-$version" >> "$GITHUB_OUTPUT"
+          echo "Latest stable version: $version"
 
-      - name: Check release status
-        id: release-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .release-cache
-          key: windows-x64-${{ steps.version.outputs.tag }}
-          lookup-only: true
+      - name: Check private release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$RELEASE_TAG already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "$RELEASE_TAG will be built"
+          fi
 
   build:
     name: Windows x64
@@ -56,7 +64,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: aseprite/aseprite
-          ref: ${{ needs.check.outputs.tag }}
+          ref: ${{ needs.check.outputs.version }}
           submodules: recursive
 
       - name: Set up MSVC x64
@@ -103,24 +111,35 @@ jobs:
           }
           $imports
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: aseprite-${{ needs.check.outputs.tag }}-windows-x64
-          path: build/bin/
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Record successful release
-        if: needs.check.outputs.cache_hit != 'true'
-        shell: bash
+      - name: Package
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          mkdir -p .release-cache
-          echo "${{ needs.check.outputs.tag }}" > .release-cache/version
+          Compress-Archive `
+            -Path build/bin/* `
+            -DestinationPath "aseprite-$env:VERSION-windows-x64.zip" `
+            -CompressionLevel Optimal
 
-      - name: Save release status
-        if: needs.check.outputs.cache_hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .release-cache
-          key: windows-x64-${{ needs.check.outputs.tag }}
+      - name: Publish private release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
+        run: |
+          archive="aseprite-$VERSION-windows-x64.zip"
+          title="Aseprite $VERSION - Windows x64"
+          notes="Personal Windows x64 build of Aseprite $VERSION. Official source: https://github.com/aseprite/aseprite/releases/tag/$VERSION"
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$archive" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --title "$title" --notes "$notes" --latest --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "$archive" \
+              --target "$GITHUB_SHA" \
+              --title "$title" \
+              --notes "$notes" \
+              --latest \
+              --repo "$GITHUB_REPOSITORY"
+          fi
