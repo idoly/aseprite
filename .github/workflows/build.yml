@@ -34,7 +34,7 @@ jobs:
           version=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=build-$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$version" >> "$GITHUB_OUTPUT"
           echo "Latest stable version: $version"
 
       - name: Check private release
@@ -118,7 +118,7 @@ jobs:
         run: |
           Compress-Archive `
             -Path build/bin/* `
-            -DestinationPath "aseprite-$env:VERSION-windows-x64.zip" `
+            -DestinationPath "Aseprite-$env:VERSION-Windows-x64.zip" `
             -CompressionLevel Optimal
 
       - name: Publish private release
@@ -128,8 +128,8 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
           RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
         run: |
-          archive="aseprite-$VERSION-windows-x64.zip"
-          title="Aseprite $VERSION - Windows x64"
+          archive="Aseprite-$VERSION-Windows-x64.zip"
+          title="Aseprite $VERSION"
           notes="Personal Windows x64 build of Aseprite $VERSION. Official source: https://github.com/aseprite/aseprite/releases/tag/$VERSION"
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
