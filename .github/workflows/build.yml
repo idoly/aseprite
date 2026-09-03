@@ -38,7 +38,7 @@ jobs:
 
       - name: Check build status
         id: release-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .build-cache
           key: windows-x64-${{ steps.version.outputs.version }}
@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Check out source and submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: aseprite/aseprite
           ref: ${{ needs.check.outputs.version }}
@@ -65,7 +65,7 @@ jobs:
           arch: x64
 
       - name: Set up Ninja
-        uses: aseprite/get-ninja@main
+        uses: aseprite/get-ninja@v1
 
       - name: Download Skia
         shell: bash
@@ -112,7 +112,7 @@ jobs:
 
       - name: Save build status
         if: needs.check.outputs.cache_hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .build-cache
           key: windows-x64-${{ needs.check.outputs.version }}
