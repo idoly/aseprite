@@ -10,79 +10,84 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: build-windows-x64
   cancel-in-progress: true
 
 jobs:
   check:
-    name: Check latest release
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-      cache_hit: ${{ steps.release-cache.outputs.cache-hit }}
-      should_build: ${{ github.event_name == 'workflow_dispatch' || steps.release-cache.outputs.cache-hit != 'true' }}
-
+      cached: ${{ steps.cache.outputs.cache-hit }}
     steps:
-      - name: Resolve latest stable version
-        id: version
-        shell: bash
+      - uses: actions/github-script@v8
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        with:
+          script: |
+            const api = github.rest.actions;
+            const runs = await github.paginate(api.listWorkflowRuns, {
+              ...context.repo, workflow_id: 'build.yml', status: 'completed', per_page: 100,
+            });
+            for (const { id: run_id } of runs) {
+              const params = { ...context.repo, run_id };
+              const jobs = await github.paginate(api.listJobsForWorkflowRun, { ...params, per_page: 100 });
+              const built = jobs.find(job => job.name === 'Windows x64')?.steps?.some(
+                step => step.name === 'Build' && step.status === 'completed' && step.conclusion !== 'skipped'
+              );
+              if (!built) await api.deleteWorkflowRun(params);
+            }
+
+      - id: version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(gh api repos/aseprite/aseprite/releases/latest --jq .tag_name)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Latest stable version: $version"
 
-      - name: Check build status
-        id: release-cache
-        uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@v6
+        id: cache
         with:
           path: .build-cache
           key: windows-x64-${{ steps.version.outputs.version }}
           lookup-only: true
+          enableCrossOsArchive: true
 
   build:
     name: Windows x64
     needs: check
-    if: needs.check.outputs.should_build == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.cached != 'true'
     runs-on: windows-latest
     timeout-minutes: 60
-
     steps:
-      - name: Check out source and submodules
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: aseprite/aseprite
           ref: ${{ needs.check.outputs.version }}
           submodules: recursive
 
-      - name: Set up MSVC x64
-        uses: TheMrMilchmann/setup-msvc-dev@v4
+      - uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: x64
-
-      - name: Set up Ninja
-        uses: aseprite/get-ninja@v1
-
-      - name: Download Skia
-        shell: bash
-        run: |
-          workspace=$(cygpath "${{ github.workspace }}")
-          skia_url=$(bash "$workspace/laf/misc/skia-url.sh" release windows x64 | xargs)
-          curl --fail --location --retry 3 --ssl-revoke-best-effort \
-            --output skia.zip "$skia_url"
-          unzip -q skia.zip -d skia
+      - uses: aseprite/get-ninja@v1
 
       - name: Configure
-        shell: bash
         run: |
+          skia_url=$(bash laf/misc/skia-url.sh release windows x64 | xargs)
+          curl --fail --location --retry 3 --ssl-revoke-best-effort -o skia.zip "$skia_url"
+          unzip -q skia.zip -d skia
           cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLAF_BACKEND=skia \
-            -DENABLE_OPENSSL=OFF \
+            -DCMAKE_BUILD_TYPE=Release -DLAF_BACKEND=skia -DENABLE_OPENSSL=OFF \
             -DSKIA_DIR="$(realpath skia)" \
             -DSKIA_LIBRARY_DIR="$(realpath skia/out/Release-x64)" \
             -DSKIA_LIBRARY="$(realpath skia/out/Release-x64/skia.lib)"
@@ -95,32 +100,21 @@ jobs:
         run: |
           $headers = (& dumpbin /headers build/bin/aseprite.exe) -join "`n"
           $imports = (& dumpbin /dependents build/bin/aseprite.exe) -join "`n"
-          if ($headers -notmatch "machine \(x64\)") {
-            throw "aseprite.exe is not an x64 executable"
-          }
-          if ($imports -match "(?i)lib(crypto|ssl).*\.dll") {
-            throw "aseprite.exe depends on an OpenSSL runtime DLL"
-          }
-          $imports
+          if ($headers -notmatch "machine \(x64\)") { throw "Expected an x64 executable" }
+          if ($imports -match "(?i)lib(crypto|ssl).*\.dll") { throw "Unexpected OpenSSL DLL dependency" }
+          New-Item -ItemType Directory -Force .build-cache | Out-Null
+          Set-Content .build-cache/version '${{ needs.check.outputs.version }}'
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: Aseprite-${{ needs.check.outputs.version }}-Windows-x64
           path: build/bin/
           if-no-files-found: error
           retention-days: 7
 
-      - name: Record successful build
-        if: needs.check.outputs.cache_hit != 'true'
-        shell: bash
-        run: |
-          mkdir -p .build-cache
-          echo "${{ needs.check.outputs.version }}" > .build-cache/version
-
-      - name: Save build status
-        if: needs.check.outputs.cache_hit != 'true'
-        uses: actions/cache/save@v6
+      - uses: actions/cache/save@v6
+        if: needs.check.outputs.cached != 'true'
         with:
           path: .build-cache
           key: windows-x64-${{ needs.check.outputs.version }}
+          enableCrossOsArchive: true
