@@ -30,7 +30,6 @@ jobs:
       cached: ${{ steps.cache.outputs.cache-hit }}
     steps:
       - uses: actions/github-script@v8
-        if: github.event_name == 'schedule'
         continue-on-error: true
         with:
           script: |
